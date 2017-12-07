@@ -24,10 +24,23 @@ class PlotWidget(pg.PlotWidget):
 
         self.vb = self.getViewBox()
         self.vb.setMouseMode(self.vb.PanMode)
+        self.plotItem.showAxis('right')
+        self.p1 = self.plotItem
+        self.p2 = pg.ViewBox()
+        self.p1.scene().addItem(self.p2)
+        self.p1.getAxis('right').linkToView(self.p2)
+        self.p2.setXLink(self.p1)
+    
+        self.p1.vb.sigResized.connect(self.updateViews)
+        self.has1 = 0
 
         self.exporter = exporter.TsExporter(self, plotdata.name)
 
         self.appendData(plotdata)
+
+    def updateViews(self):
+        self.p2.setGeometry(self.p1.vb.sceneBoundingRect())
+        self.p2.linkedViewChanged(self.p1.vb, self.p2.XAxis)
 
     def appendData(self, newplotdata, dorealign=False):
         allSeries = (newplotdata.data[c] for c in newplotdata.fields)
@@ -61,7 +74,11 @@ class PlotWidget(pg.PlotWidget):
         # TODO handle name clashes
         if pen is not None:
             curve.setPen(pen)
-        self.addItem(curve)
+        if self.has1:
+            self.p2.addItem(curve)
+        else:
+            self.p1.addItem(curve)
+            self.has1 = 1
         if isinstance(curve, pg.PlotDataItem):
             self.legend.addItem(curve, curve.name())
         curve.visible.emit()
@@ -129,8 +146,6 @@ class PlotWidget(pg.PlotWidget):
                 self.vb.setRange(xRange = [r[0][0] + xs_in, r[0][1] - xs_in], yRange = [r[1][0] + ys_in, r[1][1] - ys_in])
             if key == QtCore.Qt.Key_Minus:
                self.vb.setRange(xRange = [r[0][0] - xs_out, r[0][1] + xs_out], yRange = [r[1][0] - ys_out, r[1][1] + ys_out])
-
-        
 
     def showCurveList(self):
         dlgCurveSelection = dialogs.DlgCurveSelection(parent=self, visible=self.curves.values(), hidden=self.hiddenitems)
