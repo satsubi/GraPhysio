@@ -23,7 +23,7 @@ class PlotWidget(pg.PlotWidget):
         self.legend.setParentItem(self.getPlotItem())
 
         self.vb = self.getViewBox()
-        self.vb.setMouseMode(self.vb.RectMode)
+        self.vb.setMouseMode(self.vb.PanMode)
 
         self.exporter = exporter.TsExporter(self, plotdata.name)
 
@@ -92,9 +92,45 @@ class PlotWidget(pg.PlotWidget):
         curve.feetitem.render()
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Delete:
+        key = event.key()
+        modif = QtGui.QApplication.keyboardModifiers()
+
+        if key == QtCore.Qt.Key_Delete:
             for curve in self.curves.values():
                 curve.feetitem.removeSelection()
+        if key in [QtCore.Qt.Key_Down, QtCore.Qt.Key_Left, QtCore.Qt.Key_Right,
+                   QtCore.Qt.Key_Up, QtCore.Qt.Key_Plus, QtCore.Qt.Key_Minus]:
+            zoomfact = 10
+            r = self.vb.viewRange()
+            xs_in = (r[0][1] - r[0][0]) / (zoomfact - 2)
+            ys_in = (r[1][1] - r[1][0]) / (zoomfact - 2)
+            xs_out = (r[0][1] - r[0][0]) / zoomfact
+            ys_out = (r[1][1] - r[1][0]) / zoomfact
+
+            if modif == QtCore.Qt.ControlModifier:
+                if key == QtCore.Qt.Key_Right:
+                    self.vb.setRange(xRange = [r[0][0] + xs_in, r[0][1] - xs_in])
+                if key == QtCore.Qt.Key_Up:
+                    self.vb.setRange(yRange = [r[1][0] + ys_in, r[1][1] - ys_in])
+                if key == QtCore.Qt.Key_Left:
+                    self.vb.setRange(xRange = [r[0][0] - xs_out, r[0][1] + xs_out])
+                if key == QtCore.Qt.Key_Down:
+                    self.vb.setRange(yRange = [r[1][0] - ys_out, r[1][1] + ys_out])
+            else:
+                if key == QtCore.Qt.Key_Right:
+                    self.vb.translateBy(x=(r[0][1] - r[0][0]) / zoomfact)
+                if key == QtCore.Qt.Key_Left:
+                    self.vb.translateBy(x=(r[0][0] - r[0][1]) / zoomfact)
+                if key == QtCore.Qt.Key_Up:
+                    self.vb.translateBy(y=(r[1][1] - r[1][0]) / zoomfact)
+                if key == QtCore.Qt.Key_Down:
+                    self.vb.translateBy(y=(r[1][0] - r[1][1]) / zoomfact)
+            if key == QtCore.Qt.Key_Plus:
+                self.vb.setRange(xRange = [r[0][0] + xs_in, r[0][1] - xs_in], yRange = [r[1][0] + ys_in, r[1][1] - ys_in])
+            if key == QtCore.Qt.Key_Minus:
+               self.vb.setRange(xRange = [r[0][0] - xs_out, r[0][1] + xs_out], yRange = [r[1][0] - ys_out, r[1][1] + ys_out])
+
+        
 
     def showCurveList(self):
         dlgCurveSelection = dialogs.DlgCurveSelection(parent=self, visible=self.curves.values(), hidden=self.hiddenitems)

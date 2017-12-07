@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 
 from pyqtgraph.Qt import QtGui, QtCore
+import pyqtgraph
 
 from graphysio import tsplot, puplot, dialogs, utils, csvio, debug, transformations
 from graphysio.types import PlotData, CycleId, Parameter
@@ -20,10 +21,13 @@ class MainUi(*utils.loadUiFile('mainwindow.ui')):
 
         self.tabWidget.tabCloseRequested.connect(self.closeTab)
 
-        launchNewPlot = partial(self.launchReadData, newwidget=True)
-        launchAppendPlot = partial(self.launchReadData, newwidget=False)
+        launchNewPlot = partial(self.launchReadData, newwidget=True, quick=False)
+        launchAppendPlot = partial(self.launchReadData, newwidget=False, quick=False)
+        launchNewQuickPlot = partial(self.launchReadData, newwidget=True, quick=True)
+        launchAppendQuickPlot = partial(self.launchReadData, newwidget=False, quick=True)
         getCLIShell = partial(utils.getshell, ui=self)
         self.menuFile.addAction('&New Plot',       self.errguard(launchNewPlot),    QtCore.Qt.CTRL + QtCore.Qt.Key_N)
+        self.menuFile.addAction('&Quick Load', self.errguard(launchNewPlot))
         self.menuFile.addAction('&Append to Plot', self.errguard(launchAppendPlot), QtCore.Qt.CTRL + QtCore.Qt.Key_A)
         self.menuFile.addSeparator()
         self.menuFile.addAction('&Load plugin', self.errguard(utils.loadmodule))
@@ -128,7 +132,58 @@ class MainUi(*utils.loadUiFile('mainwindow.ui')):
         for curve in trans(plotwidget):
             plotwidget.addCurve(curve)
 
-    def launchReadData(self, newwidget=True):
+    def estimateDelimiters(self, filepath):
+        with open(filepath, 'r', encoding='latin1') as csvfile:
+            line1 = next(csvfile)
+            line2 = next(csvfile)
+            semipos = line1.find(';')
+            if semipos == -1:
+                seperator = ','
+            else:
+                seperator = ';'
+            periodpos = line2.find('.')
+            if periodpos == -1:
+                decimal   = ','
+            else:
+                decimal   = '.'
+        return (seperator, decimal)
+
+    def quickLoad(self):
+        csvrequest = CsvRequest()
+        filepath = QtGui.QFileDialog.getOpenFileName(parent = self,
+                                                     caption = "Open CSV file",
+                                                     directory = self.dircache)
+        if type(filepath) is not str:
+            filepath = filepath[0]
+        if not filepath:
+            return
+        delims = self.estimateDelimiters(filepath)
+        self.txtSep.setEditText(delims[0])
+        self.txtDecimal.setEditText(delims[1])
+        self.txtDateTime.setEditText("%Y-%m-%d %H:%M:%S{}%f".format(delims[1]))
+        yRows = [i.text() for i in self.lstY.findItems("", QtCore.Qt.MatchContains)]
+        xRows = [i.text() for i in self.lstX.findItems("", QtCore.Qt.MatchContains)]
+
+        seperator = self.txtSep.currentText()
+        if seperator == '<tab>':
+            self.csvrequest.seperator = '\t'
+        else:
+            self.csvrequest.seperator = seperator
+
+        self.csvrequest.generatex = (self.chkGenX.checkState() > QtCore.Qt.Unchecked)
+        if self.csvrequest.generatex or len(xRows) < 1:
+            self.csvrequest.dtfield = None
+        else:
+            self.csvrequest.dtfield = xRows[0]
+
+        self.csvrequest.samplerate = self.spnFs.value()
+        self.csvrequest.yfields = yRows
+        self.csvrequest.filepath = self.txtFile.text()
+        self.csvrequest.decimal = self.txtDecimal.currentText()
+        self.csvrequest.datetime_format = self.txtDateTime.currentText()
+        self.csvrequest.droplines = self.spnLinedrop.value()
+
+    def launchReadData(self, newwidget=True, quick=False):
         try:
             self.hasdata.disconnect()
         except:
@@ -140,10 +195,16 @@ class MainUi(*utils.loadUiFile('mainwindow.ui')):
             title = "Append to Plot"
             self.hasdata.connect(self.appendToPlotWithData)
 
-        dlgNewplot = dialogs.DlgNewPlot(parent=self, title=title, directory=self.dircache)
-        if not dlgNewplot.exec_():
-            return
-        csvrequest = dlgNewplot.result
+        if quick:
+            csvrequest = self.quickLoad()
+            if not csvrequest:
+                return
+        else:
+            dlgNewplot = dialogs.DlgNewPlot(parent=self, title=title, directory=self.dircache)
+            if not dlgNewplot.exec_():
+                return            
+            csvrequest = dlgNewplot.result
+
         self.dircache = csvrequest.folder
         self.statusBar.showMessage("Loading... {}...".format(csvrequest.name))
 
